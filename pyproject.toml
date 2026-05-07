@@ -17,8 +17,19 @@ dependencies = [
     "catboost",
     "xgboost",
     "dill",
-    "Flask"
+    "Flask",
+    "pydantic>=2.0",
+    "pyyaml",
+    "shap",
 ]
 
 [tool.setuptools]
 packages = ["src"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "flake8",
+]
