@@ -181,7 +181,7 @@ def api_predict():
         results = predict_pipeline.predict(pred_df)
         
         return jsonify({
-            "prediction": float(results[0]),
+            "prediction": results[0],
             "status": "success"
         })
     
