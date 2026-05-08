@@ -1,203 +1,226 @@
-import sys
-from flask import Flask, request, render_template, jsonify
-import numpy as np
-import pandas as pd
+import os
+from contextlib import asynccontextmanager
+from typing import List
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, field_validator
 
 from src.config import CONFIG
 from src.exception import CustomException
 from src.logger import logging
 from src.pipeline.predict_pipeline import CustomData, PredictPipeline
 
-application = Flask(__name__)
-app = application
+# ---------------------------------------------------------------------------
+# Load SHAP feature importance at startup
+# ---------------------------------------------------------------------------
+_feature_importance: List[dict] = []
+try:
+    import csv
 
-
-def validate_input(data):
-    """Validate user input data.
-    
-    Returns:
-        tuple: (is_valid, error_message)
-    """
-    validations = CONFIG.validations
-    
-    # Validate gender
-    if data.get('gender') not in validations.valid_genders:
-        return False, f"Invalid gender. Must be one of: {validations.valid_genders}"
-    
-    # Validate race/ethnicity
-    if data.get('ethnicity') not in validations.valid_race_ethnicity:
-        return False, f"Invalid ethnicity. Must be one of: {validations.valid_race_ethnicity}"
-    
-    # Validate parental education
-    if data.get('parental_level_of_education') not in validations.valid_parental_education:
-        return False, f"Invalid parental education. Must be one of: {validations.valid_parental_education}"
-    
-    # Validate lunch
-    if data.get('lunch') not in validations.valid_lunch:
-        return False, f"Invalid lunch type. Must be one of: {validations.valid_lunch}"
-    
-    # Validate test preparation
-    if data.get('test_preparation_course') not in validations.valid_test_preparation:
-        return False, f"Invalid test preparation. Must be one of: {validations.valid_test_preparation}"
-    
-    # Validate reading score
-    try:
-        reading_score = float(data.get('reading_score'))
-        if not (validations.score_min <= reading_score <= validations.score_max):
-            return False, f"Reading score must be between {validations.score_min} and {validations.score_max}"
-    except (ValueError, TypeError):
-        return False, "Reading score must be a number"
-    
-    # Validate writing score
-    try:
-        writing_score = float(data.get('writing_score'))
-        if not (validations.score_min <= writing_score <= validations.score_max):
-            return False, f"Writing score must be between {validations.score_min} and {validations.score_max}"
-    except (ValueError, TypeError):
-        return False, "Writing score must be a number"
-    
-    return True, None
-
-
-# Route for a home page
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-
-@app.route('/predictdata', methods=['GET', 'POST'])
-def predict_datapoint():
-    if request.method == 'GET':
-        return render_template('home.html')
-    else:
-        try:
-            # Get form data
-            form_data = {
-                'gender': request.form.get('gender'),
-                'ethnicity': request.form.get('ethnicity'),
-                'parental_level_of_education': request.form.get('parental_level_of_education'),
-                'lunch': request.form.get('lunch'),
-                'test_preparation_course': request.form.get('test_preparation_course'),
-                'reading_score': request.form.get('reading_score'),
-                'writing_score': request.form.get('writing_score')
-            }
-            
-            # Validate input
-            is_valid, error_message = validate_input(form_data)
-            if not is_valid:
-                logging.warning(f"Input validation failed: {error_message}")
-                return render_template('home.html', error=error_message)
-            
-            data = CustomData(
-                gender=form_data['gender'],
-                race_ethnicity=form_data['ethnicity'],
-                parental_level_of_education=form_data['parental_level_of_education'],
-                lunch=form_data['lunch'],
-                test_preparation_course=form_data['test_preparation_course'],
-                reading_score=float(form_data['reading_score']),
-                writing_score=float(form_data['writing_score'])
+    with open(CONFIG.model_evaluation.shap_importance_csv_path, "r") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            _feature_importance.append(
+                {
+                    "feature": row["feature"],
+                    "mean_abs_shap": float(row["mean_abs_shap"]),
+                }
             )
+except Exception as e:
+    logging.warning(f"Could not load SHAP feature importance: {e}")
 
-            pred_df = data.get_data_as_data_frame()
-            print(pred_df)
-            print("Before Prediction")
-
-            predict_pipeline = PredictPipeline()
-            print("Mid Prediction")
-
-            results = predict_pipeline.predict(pred_df)
-            print("after Prediction")
-
-            return render_template('home.html', results=results[0])
-        
-        except CustomException as e:
-            logging.error(f"Pipeline error during prediction: {e.error_message}")
-            return render_template(
-                'home.html',
-                error="Prediction failed due to data processing error. Please check your inputs and try again."
-            )
-        except Exception as e:
-            logging.error(f"Unexpected error during prediction: {e}", exc_info=True)
-            return render_template(
-                'home.html',
-                error="An unexpected error occurred. Please try again later."
-            )
+_predict_pipeline: PredictPipeline | None = None
 
 
-@app.route('/api/predict', methods=['POST'])
-def api_predict():
-    """API endpoint for predictions (JSON input).
-    
-    Request body example:
-    {
-        "gender": "female",
-        "race_ethnicity": "group B",
-        "parental_level_of_education": "bachelor's degree",
-        "lunch": "standard",
-        "test_preparation_course": "none",
-        "reading_score": 72,
-        "writing_score": 74
-    }
-    
-    Response example:
-    {
-        "prediction": 72.5,
-        "status": "success"
-    }
-    """
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _predict_pipeline
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({"error": "No data provided", "status": "error"}), 400
-        
-        # Validate input
-        form_data = {
-            'gender': data.get('gender'),
-            'ethnicity': data.get('race_ethnicity'),
-            'parental_level_of_education': data.get('parental_level_of_education'),
-            'lunch': data.get('lunch'),
-            'test_preparation_course': data.get('test_preparation_course'),
-            'reading_score': data.get('reading_score'),
-            'writing_score': data.get('writing_score')
-        }
-        
-        is_valid, error_message = validate_input(form_data)
-        if not is_valid:
-            return jsonify({"error": error_message, "status": "error"}), 400
-        
-        custom_data = CustomData(
-            gender=form_data['gender'],
-            race_ethnicity=form_data['ethnicity'],
-            parental_level_of_education=form_data['parental_level_of_education'],
-            lunch=form_data['lunch'],
-            test_preparation_course=form_data['test_preparation_course'],
-            reading_score=float(form_data['reading_score']),
-            writing_score=float(form_data['writing_score'])
-        )
-        
-        pred_df = custom_data.get_data_as_data_frame()
-        predict_pipeline = PredictPipeline()
-        results = predict_pipeline.predict(pred_df)
-        
-        return jsonify({
-            "prediction": results[0],
-            "status": "success"
-        })
-    
-    except CustomException as e:
-        logging.error(f"API pipeline error: {e.error_message}")
-        return jsonify({
-            "error": "Prediction failed due to invalid input or processing error.",
-            "status": "error"
-        }), 400
+        _predict_pipeline = PredictPipeline()
+        logging.info("PredictPipeline initialized successfully")
     except Exception as e:
-        logging.error(f"Unexpected API error: {e}", exc_info=True)
-        return jsonify({
-            "error": "Internal server error. Please try again later.",
-            "status": "error"
-        }), 500
+        logging.error(f"Failed to initialize PredictPipeline: {e}")
+    yield
+    logging.info("Shutting down API")
 
 
-if __name__=="__main__":
-    app.run(host="0.0.0.0")
+app = FastAPI(
+    title="Student Performance ML API",
+    description="Predict student math scores based on demographic, socioeconomic, and academic features",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Pydantic Schemas
+# ---------------------------------------------------------------------------
+class PredictionRequest(BaseModel):
+    gender: str
+    race_ethnicity: str
+    parental_level_of_education: str
+    lunch: str
+    test_preparation_course: str
+    reading_score: float
+    writing_score: float
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str) -> str:
+        if v not in CONFIG.validations.valid_genders:
+            raise ValueError(
+                f"Invalid gender. Must be one of: {CONFIG.validations.valid_genders}"
+            )
+        return v
+
+    @field_validator("race_ethnicity")
+    @classmethod
+    def validate_ethnicity(cls, v: str) -> str:
+        if v not in CONFIG.validations.valid_race_ethnicity:
+            raise ValueError(
+                f"Invalid ethnicity. Must be one of: {CONFIG.validations.valid_race_ethnicity}"
+            )
+        return v
+
+    @field_validator("parental_level_of_education")
+    @classmethod
+    def validate_education(cls, v: str) -> str:
+        if v not in CONFIG.validations.valid_parental_education:
+            raise ValueError(
+                f"Invalid parental education. Must be one of: {CONFIG.validations.valid_parental_education}"
+            )
+        return v
+
+    @field_validator("lunch")
+    @classmethod
+    def validate_lunch(cls, v: str) -> str:
+        if v not in CONFIG.validations.valid_lunch:
+            raise ValueError(
+                f"Invalid lunch type. Must be one of: {CONFIG.validations.valid_lunch}"
+            )
+        return v
+
+    @field_validator("test_preparation_course")
+    @classmethod
+    def validate_test_prep(cls, v: str) -> str:
+        if v not in CONFIG.validations.valid_test_preparation:
+            raise ValueError(
+                f"Invalid test preparation. Must be one of: {CONFIG.validations.valid_test_preparation}"
+            )
+        return v
+
+    @field_validator("reading_score", "writing_score")
+    @classmethod
+    def validate_scores(cls, v: float) -> float:
+        if not (CONFIG.validations.score_min <= v <= CONFIG.validations.score_max):
+            raise ValueError(
+                f"Score must be between {CONFIG.validations.score_min} and {CONFIG.validations.score_max}"
+            )
+        return v
+
+
+class PredictionResponse(BaseModel):
+    prediction: int
+    status: str = "success"
+
+
+class FeatureImportanceItem(BaseModel):
+    feature: str
+    mean_abs_shap: float
+
+
+class ModelInfoResponse(BaseModel):
+    model_type: str
+    r2_score: float
+    cv_folds: int
+    feature_importance: List[FeatureImportanceItem]
+
+
+class HealthResponse(BaseModel):
+    status: str
+    model_loaded: bool
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/", include_in_schema=False)
+def root():
+    return {
+        "message": "Student Performance ML API",
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
+@app.get("/health", response_model=HealthResponse)
+def health_check():
+    return HealthResponse(
+        status="healthy",
+        model_loaded=_predict_pipeline is not None,
+    )
+
+
+@app.get("/api/model-info", response_model=ModelInfoResponse)
+def model_info():
+    return ModelInfoResponse(
+        model_type="Ridge Regression",
+        r2_score=0.88,
+        cv_folds=CONFIG.model_trainer.cv_folds,
+        feature_importance=[
+            FeatureImportanceItem(**item) for item in _feature_importance
+        ],
+    )
+
+
+@app.post("/api/predict", response_model=PredictionResponse)
+def predict(request: PredictionRequest):
+    if _predict_pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Model not loaded. Please check server logs.",
+        )
+
+    try:
+        data = CustomData(
+            gender=request.gender,
+            race_ethnicity=request.race_ethnicity,
+            parental_level_of_education=request.parental_level_of_education,
+            lunch=request.lunch,
+            test_preparation_course=request.test_preparation_course,
+            reading_score=int(request.reading_score),
+            writing_score=int(request.writing_score),
+        )
+        pred_df = data.get_data_as_data_frame()
+        results = _predict_pipeline.predict(pred_df)
+        return PredictionResponse(prediction=results[0])
+
+    except CustomException as e:
+        logging.error(f"Prediction pipeline error: {e.error_message}")
+        raise HTTPException(
+            status_code=400,
+            detail="Prediction failed due to invalid input or processing error.",
+        )
+    except Exception as e:
+        logging.error(f"Unexpected prediction error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during prediction.",
+        )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
