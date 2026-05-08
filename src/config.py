@@ -1,9 +1,8 @@
 import os
-from pathlib import Path
 from typing import List
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class DataIngestionConfig(BaseModel):

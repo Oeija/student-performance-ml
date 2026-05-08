@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from src.components.model_trainer import ModelTrainer
 from src.config import CONFIG
