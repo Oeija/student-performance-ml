@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "student-performance-ml"
+version = "0.0.1"
+authors = [
+    {name = "Vincent Oei", email = "oei.vincent20@gmail.com"}
+]
+dependencies = [
+    "pandas",
+    "numpy",
+    "seaborn",
+    "matplotlib",
+    "scikit-learn",
+    "catboost",
+    "xgboost",
+    "dill",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "pydantic>=2.0",
+    "pyyaml",
+    "shap",
+]
+
+[tool.setuptools]
+packages = ["src"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "flake8",
+]

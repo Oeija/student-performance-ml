@@ -1,0 +1,58 @@
+data_ingestion:
+  raw_data_path: "data/raw/StudentsPerformance.csv"
+  processed_data_dir: "data/processed"
+  artifacts_dir: "artifacts"
+  train_filename: "train.csv"
+  test_filename: "test.csv"
+  raw_filename: "data.csv"
+  test_size: 0.2
+  random_state: 42
+
+data_transformation:
+  target_column: "math_score"
+  numerical_columns:
+    - "writing_score"
+    - "reading_score"
+  categorical_columns:
+    - "gender"
+    - "race_ethnicity"
+    - "parental_level_of_education"
+    - "lunch"
+    - "test_preparation_course"
+  preprocessor_filename: "preprocessor.pkl"
+  feature_names_filename: "feature_names.json"
+
+model_trainer:
+  model_filename: "model.pkl"
+  cv_folds: 5
+  min_score_threshold: 0.6
+
+model_evaluation:
+  shap_summary_plot: "shap_summary.png"
+  shap_importance_csv: "shap_importance.csv"
+
+validations:
+  score_min: 0
+  score_max: 100
+  valid_genders:
+    - "female"
+    - "male"
+  valid_race_ethnicity:
+    - "group A"
+    - "group B"
+    - "group C"
+    - "group D"
+    - "group E"
+  valid_parental_education:
+    - "some high school"
+    - "high school"
+    - "some college"
+    - "associate's degree"
+    - "bachelor's degree"
+    - "master's degree"
+  valid_lunch:
+    - "free/reduced"
+    - "standard"
+  valid_test_preparation:
+    - "none"
+    - "completed"
