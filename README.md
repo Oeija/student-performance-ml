@@ -176,14 +176,21 @@ pytest tests/
 Build the Docker image:
 
 ```bash
-docker build -t student-performance-ml .
+docker build -t student-performance-ml:1.0.0 .
 ```
 
 Run the container:
 
 ```bash
-docker run -p 8000:8000 --env CORS_ORIGINS=https://your-frontend.vercel.app student-performance-ml
+docker run --name student-performance-ml -d -p 8000:8000 student-performance-ml:1.0.0
 ```
+
+The API will be available at `http://localhost:8000`.
+
+> **Note:** The default `CORS_ORIGINS` allows `http://localhost:3000`. To allow a deployed frontend, pass the `--env` flag:
+> ```bash
+> docker run --name student-performance-ml -d -p 8000:8000 --env CORS_ORIGINS=https://your-frontend-link student-performance-ml:1.0.0
+> ```
 
 For AWS deployment (ECS, EKS, or App Runner):
 1. Push the image to Amazon ECR
