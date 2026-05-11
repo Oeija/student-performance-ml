@@ -8,12 +8,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies first (for better caching)
 COPY pyproject.toml requirements.txt ./
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
+
+# Install the package itself
+RUN pip install --no-cache-dir -e .
 
 # Expose the application port
 EXPOSE 8000
