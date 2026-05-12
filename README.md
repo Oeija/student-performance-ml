@@ -1,6 +1,6 @@
 # Student Performance ML
 
-An end-to-end machine learning pipeline to predict student math scores based on demographic and academic features.
+An end-to-end machine learning pipeline to predict student math scores based on demographic and academic features. Access the frontend at: github.com/Oeija/student-performance-frontend
 
 ## Project Overview
 
