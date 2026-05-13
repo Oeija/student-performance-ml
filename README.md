@@ -1,6 +1,8 @@
 # Student Performance ML
 
-An end-to-end machine learning pipeline to predict student math scores based on demographic and academic features. Access the frontend at: github.com/Oeija/student-performance-frontend
+An end-to-end machine learning pipeline to predict student math score based on demographic, socioeconomic, and academic features.
+
+**Frontend:** [student-performance-frontend](https://github.com/Oeija/student-performance-frontend)
 
 ## Project Overview
 
@@ -20,18 +22,29 @@ The pipeline includes:
 - SHAP-based model interpretability
 - FastAPI JSON API for predictions
 
+## Tech Stack
+
+- **ML / Data:** [scikit-learn](https://scikit-learn.org/), [pandas](https://pandas.pydata.org/), [numpy](https://numpy.org/), [XGBoost](https://xgboost.readthedocs.io/), [CatBoost](https://catboost.ai/)
+- **Explainability:** [SHAP](https://shap.readthedocs.io/)
+- **API:** [FastAPI](https://fastapi.tiangolo.com/), [Uvicorn](https://www.uvicorn.org/), [Pydantic](https://docs.pydantic.dev/)
+- **Visualization:** [seaborn](https://seaborn.pydata.org/), [matplotlib](https://matplotlib.org/), [plotly](https://plotly.com/python/)
+- **Serialization:** [dill](https://dill.readthedocs.io/)
+- **Configuration:** [PyYAML](https://pyyaml.org/)
+- **Testing:** [pytest](https://docs.pytest.org/)
+- **Deployment:** Docker on [AWS EC2](https://aws.amazon.com/ec2/)
+
 ## Architecture
 
 ```
 config/
-├── config.yaml              # Centralized configuration
+├── config.yaml                    # Centralized configuration
 data/
 ├── raw/
 │   └── StudentsPerformance.csv    # Source data (version controlled)
 ├── processed/                     # Generated datasets (NOT version controlled)
 │   ├── train.csv
 │   └── test.csv
-artifacts/                         # Generated model artifacts (NOT version controlled)
+artifacts/                         # Generated model artifacts (gitignored, baked into Docker image)
 ├── model.pkl
 ├── preprocessor.pkl
 ├── feature_names.json
@@ -39,21 +52,21 @@ artifacts/                         # Generated model artifacts (NOT version cont
 └── shap_importance.csv
 src/
 ├── components/
-│   ├── data_ingestion.py    # Data loading and validation
-│   ├── data_transformation.py # Feature engineering
-│   ├── model_trainer.py     # Model training and evaluation
-│   └── model_interpretability.py # SHAP explanations
+│   ├── data_ingestion.py          # Data loading and validation
+│   ├── data_transformation.py     # Feature engineering
+│   ├── model_trainer.py           # Model training and evaluation
+│   └── model_interpretability.py  # SHAP explanations
 ├── pipeline/
-│   ├── predict_pipeline.py  # Prediction pipeline
-│   └── train_pipeline.py    # Training pipeline
-├── config.py                # Pydantic configuration schema
-├── utils.py                 # Utility functions
-├── exception.py             # Custom exceptions
-└── logger.py                # Logging configuration
-app.py                       # FastAPI application
-Dockerfile                   # Container image for AWS deployment
-pyproject.toml               # Project dependencies
-requirements.txt             # Auto-generated dependencies
+│   ├── predict_pipeline.py        # Prediction pipeline
+│   └── train_pipeline.py          # Training pipeline
+├── config.py                      # Pydantic configuration schema
+├── utils.py                       # Utility functions
+├── exception.py                   # Custom exceptions
+└── logger.py                      # Logging configuration
+app.py                             # FastAPI application
+Dockerfile                         # Container image for deployment
+pyproject.toml                     # Project dependencies
+requirements.txt                   # Auto-generated dependencies
 ```
 
 ## Setup
@@ -109,6 +122,12 @@ Interactive API documentation:
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - ReDoc: `http://127.0.0.1:8000/redoc`
 
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed frontend origins |
+
 ## API Endpoints
 
 ### Health Check
@@ -142,6 +161,10 @@ Interactive API documentation:
   }
   ```
 
+### API Documentation
+- **GET** `/docs` — Swagger UI (interactive API docs)
+- **GET** `/redoc` — ReDoc documentation
+
 ## Configuration
 
 All project settings are centralized in `config/config.yaml`. Key settings include:
@@ -171,39 +194,46 @@ Run unit tests:
 pytest tests/
 ```
 
-## Docker Deployment (AWS)
+## Docker Deployment (AWS EC2)
 
-Build the Docker image:
+### Prerequisites
+- Docker installed locally and on EC2
+- Model artifacts (`artifacts/`) present locally before building
 
-```bash
-docker build -t student-performance-ml:1.0.0 .
-```
-
-Run the container:
+### Build Image
 
 ```bash
-docker run --name student-performance-ml -d -p 8000:8000 student-performance-ml:1.0.0
+docker build -t yourusername/student-performance-ml:1.0.0 .
 ```
 
-The API will be available at `http://localhost:8000`.
+### Push to Docker Hub
 
-> **Note:** The default `CORS_ORIGINS` allows `http://localhost:3000`. To allow a deployed frontend, pass the `--env` flag:
-> ```bash
-> docker run --name student-performance-ml -d -p 8000:8000 --env CORS_ORIGINS=https://your-frontend-link student-performance-ml:1.0.0
-> ```
+```bash
+docker login
+docker tag student-performance-ml:1.0.0 yourusername/student-performance-ml:1.0.0
+docker push yourusername/student-performance-ml:1.0.0
+```
 
-For AWS deployment (ECS, EKS, or App Runner):
-1. Push the image to Amazon ECR
-2. Configure the `CORS_ORIGINS` environment variable with your frontend URL
-3. Expose port 8000
+### Run on AWS EC2
 
-## CI/CD
+```bash
+docker pull yourusername/student-performance-ml:1.0.0
 
-This project is configured for CI/CD with:
-- `pyproject.toml` for dependency management
-- `requirements.txt` for deployment environments
-- Unit tests in `tests/`
-- Dockerfile for containerized AWS deployment
+docker run -d \
+  --name student-performance-ml \
+  -p 8000:8000 \
+  --restart unless-stopped \
+  -e CORS_ORIGINS="http://localhost:3000,https://your-frontend.vercel.app" \
+  yourusername/student-performance-ml:1.0.0
+```
+
+The API will be available at `http://your-ec2-instance:8000`.
+
+## Important Notes
+
+- **Artifacts**: The `artifacts/` directory is listed in `.gitignore` and `.dockerignore`, but **must exist locally** before building the Docker image. The `COPY . .` instruction in the Dockerfile includes these files in the final image.
+- **Working Directory**: The application resolves artifact paths relative to the project root. The Dockerfile sets `WORKDIR /app` to ensure correct resolution.
+- **CORS**: Update the `CORS_ORIGINS` environment variable whenever you deploy a new frontend domain.
 
 ## Data Source
 
