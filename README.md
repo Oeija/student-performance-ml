@@ -16,11 +16,12 @@ This project predicts a student's math score using features such as:
 - Writing Score
 
 The pipeline includes:
-- Data ingestion with validation
-- Data transformation and preprocessing
-- Model training with hyperparameter tuning
-- SHAP-based model interpretability
-- FastAPI JSON API for predictions
+- **Data ingestion**: Load raw CSV and split into train/test sets
+- **Data validation**: Comprehensive data quality checks (schema, nulls, types, ranges, categoricals, duplicates)
+- **Data transformation**: Feature engineering and preprocessing
+- **Model training**: Hyperparameter tuning across multiple algorithms
+- **SHAP-based model interpretability**: Feature importance explanations
+- **FastAPI JSON API**: Real-time predictions with input validation
 
 ## Tech Stack
 
@@ -52,8 +53,9 @@ artifacts/                         # Generated model artifacts (gitignored, bake
 └── shap_importance.csv
 src/
 ├── components/
-│   ├── data_ingestion.py          # Data loading and validation
-│   ├── data_transformation.py     # Feature engineering
+│   ├── data_ingestion.py          # Data loading and train-test splitting
+│   ├── data_validation.py         # Data quality validation (nulls, types, ranges, categoricals, duplicates)
+│   ├── data_transformation.py     # Feature engineering and preprocessing
 │   ├── model_trainer.py           # Model training and evaluation
 │   └── model_interpretability.py  # SHAP explanations
 ├── pipeline/
@@ -104,7 +106,8 @@ python src/components/data_ingestion.py
 ```
 
 This will:
-- Load and validate the raw data
+- Load raw data
+- Validate data quality via `DataValidation` component
 - Preprocess features
 - Train multiple models with hyperparameter tuning
 - Select the best model (currently Ridge regression)
@@ -173,6 +176,24 @@ All project settings are centralized in `config/config.yaml`. Key settings inclu
 - `model_trainer.cv_folds`: Cross-validation folds (default: 5)
 - `model_trainer.min_score_threshold`: Minimum R² threshold (default: 0.6)
 
+## Data Validation
+
+The `DataValidation` component (`src/components/data_validation.py`) performs comprehensive data quality checks before any model training occurs. All validations follow a **fail-fast** approach — if any check fails, the pipeline stops immediately with a descriptive error.
+
+Validation checks include:
+
+| Check | Description | Fail Condition |
+|-------|-------------|----------------|
+| **Schema Validation** | Ensures all expected columns are present | Missing required columns |
+| **Null Detection** | Rejects any `NaN` or `null` values | Any null value in any column |
+| **Data Type Enforcement** | Strict type checking on all columns | Score columns must be `int64`; categorical columns must be `object`/`string` |
+| **Score Range Validation** | Validates numerical score bounds | Any score outside [0, 100] |
+| **Categorical Value Validation** | Checks categorical columns against allowed enums | Invalid values in `gender`, `race_ethnicity`, `lunch`, etc. |
+| **Empty String / Placeholder Detection** | Rejects empty, whitespace-only, or placeholder strings | `""`, `"   "`, `"N/A"`, `"null"`, `"-"`, `"?"`, `"unknown"`, `"None"` |
+| **Duplicate Removal** | Drops exact duplicate rows | Logs count of removed duplicates |
+
+These validations ensure data integrity and prevent silent failures during training or prediction.
+
 ## Model Performance
 
 Current best model: **Ridge Regression**
@@ -193,6 +214,13 @@ Run unit tests:
 ```bash
 pytest tests/
 ```
+
+Test coverage includes:
+- `tests/test_data_validation.py` — Data quality validation checks
+- `tests/test_data_ingestion.py` — File loading and train-test splitting
+- `tests/test_data_transformation.py` — Feature preprocessing
+- `tests/test_model_trainer.py` — Model training and evaluation
+- `tests/test_config.py` — Configuration loading and validation
 
 ## Docker Deployment (AWS EC2)
 
