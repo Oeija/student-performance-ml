@@ -59,8 +59,7 @@ src/
 │   ├── model_trainer.py           # Model training and evaluation
 │   └── model_interpretability.py  # SHAP explanations
 ├── pipeline/
-│   ├── predict_pipeline.py        # Prediction pipeline
-│   └── train_pipeline.py          # Training pipeline
+│   └── predict_pipeline.py        # Prediction pipeline
 ├── config.py                      # Pydantic configuration schema
 ├── utils.py                       # Utility functions
 ├── exception.py                   # Custom exceptions
